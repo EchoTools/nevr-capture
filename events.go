@@ -119,7 +119,7 @@ func (ed *EventDetector) processLoop() {
 	}
 }
 
-// addFrameToBuffer adds a frame to the buffer (must be called with lock held or from processLoop)
+// addFrameToBuffer adds a frame to the buffer (thread-safe)
 func (ed *EventDetector) addFrameToBuffer(frame *rtapi.LobbySessionStateFrame) {
 	ed.mu.Lock()
 	defer ed.mu.Unlock()
