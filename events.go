@@ -7,6 +7,14 @@ import (
 	"github.com/echotools/nevr-common/v4/gen/go/rtapi"
 )
 
+// Detector defines the behavior required to process frames and emit lobby events.
+type Detector interface {
+	ProcessFrame(*rtapi.LobbySessionStateFrame)
+	EventsChan() <-chan []*rtapi.LobbySessionEvent
+	Reset()
+	Stop()
+}
+
 const MaxFrameBufferCapacity = 10
 
 // EventDetector detects post_match events
@@ -28,6 +36,8 @@ type EventDetector struct {
 	wg         sync.WaitGroup
 	mu         sync.RWMutex // Protects frame buffer access
 }
+
+var _ Detector = (*EventDetector)(nil)
 
 // NewEventDetector creates a new event detector with goroutine-based processing
 func NewEventDetector() *EventDetector {

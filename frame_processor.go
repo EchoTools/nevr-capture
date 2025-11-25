@@ -13,16 +13,24 @@ import (
 // optimized for up to 600 Hz operation
 type FrameProcessor struct {
 	frameIndex    uint32
-	eventDetector *EventDetector
+	eventDetector Detector
 	unmarshaler   *protojson.UnmarshalOptions
 }
 
 // NewFrameProcessor creates a new optimized frame processor
 func NewFrameProcessor() *FrameProcessor {
+	return NewFrameProcessorWithDetector(NewEventDetector())
+}
+
+// NewFrameProcessorWithDetector allows callers to supply a custom Detector implementation.
+func NewFrameProcessorWithDetector(det Detector) *FrameProcessor {
+	if det == nil {
+		det = NewEventDetector()
+	}
 
 	return &FrameProcessor{
 		frameIndex:    0,
-		eventDetector: NewEventDetector(),
+		eventDetector: det,
 		unmarshaler: &protojson.UnmarshalOptions{
 			AllowPartial: true,
 		},
