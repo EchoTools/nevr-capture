@@ -71,6 +71,7 @@ func (ed *EventDetector) Reset() {
 	defer ed.mu.Unlock()
 	ed.writeIndex = 0
 	ed.frameCount = 0
+	ed.previousGameStatusFrame = nil
 }
 
 // ProcessFrame writes a frame to the processing channel (non-blocking)
