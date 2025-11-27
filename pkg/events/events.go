@@ -1,4 +1,4 @@
-package nevrcap
+package events
 
 import (
 	"context"
@@ -17,32 +17,46 @@ type Detector interface {
 
 const DefaultFrameBufferCapacity = 10
 
-// Option configures the EventDetector
-type Option func(*EventDetector)
+// Option configures the AsyncDetector
+type Option func(*AsyncDetector)
 
 // WithInputChannelSize sets the size of the input channel
 func WithInputChannelSize(size int) Option {
-	return func(ed *EventDetector) {
+	return func(ed *AsyncDetector) {
 		ed.inputChan = make(chan *rtapi.LobbySessionStateFrame, size)
 	}
 }
 
 // WithEventsChannelSize sets the size of the events channel
 func WithEventsChannelSize(size int) Option {
-	return func(ed *EventDetector) {
+	return func(ed *AsyncDetector) {
 		ed.eventsChan = make(chan []*rtapi.LobbySessionEvent, size)
 	}
 }
 
 // WithFrameBufferSize sets the size of the frame buffer
 func WithFrameBufferSize(size int) Option {
-	return func(ed *EventDetector) {
+	return func(ed *AsyncDetector) {
 		ed.frameBuffer = make([]*rtapi.LobbySessionStateFrame, size)
 	}
 }
 
-// EventDetector detects post_match events
-type EventDetector struct {
+// WithSensors adds sensors to the detector
+func WithSensors(sensors ...Sensor) Option {
+	return func(ed *AsyncDetector) {
+		ed.sensors = append(ed.sensors, sensors...)
+	}
+}
+
+// WithSynchronousProcessing enables synchronous processing of frames
+func WithSynchronousProcessing() Option {
+	return func(ed *AsyncDetector) {
+		ed.synchronous = true
+	}
+}
+
+// AsyncDetector detects post_match events
+type AsyncDetector struct {
 	previousGameStatusFrame *rtapi.LobbySessionStateFrame
 
 	// Ring buffer for frames
@@ -50,7 +64,7 @@ type EventDetector struct {
 	writeIndex  int // Current write position
 	frameCount  int // Number of frames currently in buffer
 
-	sensors []EventSensor
+	sensors []Sensor
 
 	// Channel-based processing
 	inputChan  chan *rtapi.LobbySessionStateFrame
@@ -62,14 +76,16 @@ type EventDetector struct {
 
 	// Reusable buffer for events to reduce allocations
 	eventBuffer []*rtapi.LobbySessionEvent
+
+	synchronous bool
 }
 
-var _ Detector = (*EventDetector)(nil)
+var _ Detector = (*AsyncDetector)(nil)
 
-// NewEventDetector creates a new event detector with goroutine-based processing
-func NewEventDetector(opts ...Option) *EventDetector {
+// New creates a new event detector with goroutine-based processing
+func New(opts ...Option) *AsyncDetector {
 	ctx, cancel := context.WithCancel(context.Background())
-	ed := &EventDetector{
+	ed := &AsyncDetector{
 		inputChan:   make(chan *rtapi.LobbySessionStateFrame, 100),
 		eventsChan:  make(chan []*rtapi.LobbySessionEvent, 10),
 		resetChan:   make(chan struct{}),
@@ -88,20 +104,20 @@ func NewEventDetector(opts ...Option) *EventDetector {
 }
 
 // Start launches the background processing goroutine
-func (ed *EventDetector) Start() {
+func (ed *AsyncDetector) Start() {
 	ed.wg.Add(1)
 	go ed.processLoop()
 }
 
 // Stop gracefully shuts down the event detector
-func (ed *EventDetector) Stop() {
+func (ed *AsyncDetector) Stop() {
 	ed.cancel()
 	ed.wg.Wait()
 	close(ed.eventsChan)
 }
 
 // Reset clears the event detector state
-func (ed *EventDetector) Reset() {
+func (ed *AsyncDetector) Reset() {
 	select {
 	case ed.resetChan <- struct{}{}:
 	case <-ed.ctx.Done():
@@ -109,7 +125,12 @@ func (ed *EventDetector) Reset() {
 }
 
 // ProcessFrame writes a frame to the processing channel (non-blocking)
-func (ed *EventDetector) ProcessFrame(frame *rtapi.LobbySessionStateFrame) {
+func (ed *AsyncDetector) ProcessFrame(frame *rtapi.LobbySessionStateFrame) {
+	if ed.synchronous {
+		ed.processFrameSync(frame)
+		return
+	}
+
 	select {
 	case ed.inputChan <- frame:
 		// Frame sent successfully
@@ -120,13 +141,38 @@ func (ed *EventDetector) ProcessFrame(frame *rtapi.LobbySessionStateFrame) {
 	}
 }
 
+func (ed *AsyncDetector) processFrameSync(frame *rtapi.LobbySessionStateFrame) {
+	// Add frame to buffer
+	ed.addFrameToBuffer(frame)
+
+	// Detect events using the detection algorithm
+	ed.eventBuffer = ed.eventBuffer[:0]
+	ed.eventBuffer = ed.detectEvents(ed.eventBuffer)
+
+	// Send events if any were detected
+	if len(ed.eventBuffer) > 0 {
+		// Copy events to avoid race conditions with the reused buffer
+		eventsToSend := make([]*rtapi.LobbySessionEvent, len(ed.eventBuffer))
+		copy(eventsToSend, ed.eventBuffer)
+
+		// In synchronous mode, we block until events are accepted
+		// This ensures the caller can receive them immediately
+		select {
+		case ed.eventsChan <- eventsToSend:
+			// Events sent successfully
+		case <-ed.ctx.Done():
+			return
+		}
+	}
+}
+
 // EventsChan returns the channel for receiving detected events
-func (ed *EventDetector) EventsChan() <-chan []*rtapi.LobbySessionEvent {
+func (ed *AsyncDetector) EventsChan() <-chan []*rtapi.LobbySessionEvent {
 	return ed.eventsChan
 }
 
 // processLoop is the background goroutine that processes frames
-func (ed *EventDetector) processLoop() {
+func (ed *AsyncDetector) processLoop() {
 	defer ed.wg.Done()
 
 	for {
@@ -168,7 +214,7 @@ func (ed *EventDetector) processLoop() {
 }
 
 // addFrameToBuffer adds a frame to the buffer
-func (ed *EventDetector) addFrameToBuffer(frame *rtapi.LobbySessionStateFrame) {
+func (ed *AsyncDetector) addFrameToBuffer(frame *rtapi.LobbySessionStateFrame) {
 	// Write to current position
 	ed.frameBuffer[ed.writeIndex] = frame
 
@@ -182,7 +228,7 @@ func (ed *EventDetector) addFrameToBuffer(frame *rtapi.LobbySessionStateFrame) {
 }
 
 // getFrame returns the frame at the given offset
-func (ed *EventDetector) getFrame(offset int) *rtapi.LobbySessionStateFrame {
+func (ed *AsyncDetector) getFrame(offset int) *rtapi.LobbySessionStateFrame {
 	if offset >= len(ed.frameBuffer) {
 		return nil
 	}
@@ -191,7 +237,7 @@ func (ed *EventDetector) getFrame(offset int) *rtapi.LobbySessionStateFrame {
 }
 
 // lastFrame returns the most recently added frame
-func (ed *EventDetector) lastFrame() *rtapi.LobbySessionStateFrame {
+func (ed *AsyncDetector) lastFrame() *rtapi.LobbySessionStateFrame {
 	if ed.frameCount == 0 {
 		return nil
 	}
@@ -200,19 +246,19 @@ func (ed *EventDetector) lastFrame() *rtapi.LobbySessionStateFrame {
 }
 
 // lastFrameIndex returns the index of the most recently written frame
-func (ed *EventDetector) lastFrameIndex() int {
+func (ed *AsyncDetector) lastFrameIndex() int {
 	return (ed.writeIndex - 1 + len(ed.frameBuffer)) % len(ed.frameBuffer)
 }
 
 // detectEvents analyzes frames in the ring buffer and returns detected events
-func (ed *EventDetector) detectEvents(dst []*rtapi.LobbySessionEvent) []*rtapi.LobbySessionEvent {
+func (ed *AsyncDetector) detectEvents(dst []*rtapi.LobbySessionEvent) []*rtapi.LobbySessionEvent {
 	// Use the newest frame available in the buffer
 	if len(ed.frameBuffer) == 0 {
 		return dst
 	}
 
 	for _, s := range ed.sensors {
-		event := s.AddFrame(ed.getFrame(0))
+		event := s.AddFrame(ed.lastFrame())
 		if event != nil {
 			dst = append(dst, event)
 		}

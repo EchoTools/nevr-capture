@@ -1,4 +1,4 @@
-package nevrcap
+package events
 
 import (
 	"testing"
@@ -8,8 +8,8 @@ import (
 	"github.com/echotools/nevr-common/v4/gen/go/rtapi"
 )
 
-func TestEventDetector_ProcessFrameRoundOverTransition(t *testing.T) {
-	detector := newTestEventDetector(t)
+func TestAsyncDetector_ProcessFrameRoundOverTransition(t *testing.T) {
+	detector := newTestAsyncDetector(t)
 
 	detector.ProcessFrame(createPostMatchTestFrame("playing", 1, 0))
 	assertNoEvents(t, detector, 50*time.Millisecond)
@@ -25,8 +25,8 @@ func TestEventDetector_ProcessFrameRoundOverTransition(t *testing.T) {
 	}
 }
 
-func TestEventDetector_ProcessFramePostMatchTransition(t *testing.T) {
-	detector := newTestEventDetector(t)
+func TestAsyncDetector_ProcessFramePostMatchTransition(t *testing.T) {
+	detector := newTestAsyncDetector(t)
 
 	detector.ProcessFrame(createPostMatchTestFrame("playing", 1, 0))
 	assertNoEvents(t, detector, 50*time.Millisecond)
@@ -42,8 +42,8 @@ func TestEventDetector_ProcessFramePostMatchTransition(t *testing.T) {
 	}
 }
 
-func TestEventDetector_ProcessFrameInitialPostMatch(t *testing.T) {
-	detector := newTestEventDetector(t)
+func TestAsyncDetector_ProcessFrameInitialPostMatch(t *testing.T) {
+	detector := newTestAsyncDetector(t)
 
 	detector.ProcessFrame(createPostMatchTestFrame(GameStatusPostMatch, 5, 4))
 	events := mustReceiveEvents(t, detector, 100*time.Millisecond)
@@ -56,8 +56,8 @@ func TestEventDetector_ProcessFrameInitialPostMatch(t *testing.T) {
 	}
 }
 
-func TestEventDetector_ProcessFrameNoTransitionNoEvent(t *testing.T) {
-	detector := newTestEventDetector(t)
+func TestAsyncDetector_ProcessFrameNoTransitionNoEvent(t *testing.T) {
+	detector := newTestAsyncDetector(t)
 
 	detector.ProcessFrame(createPostMatchTestFrame("playing", 1, 0))
 	assertNoEvents(t, detector, 50*time.Millisecond)
@@ -66,22 +66,22 @@ func TestEventDetector_ProcessFrameNoTransitionNoEvent(t *testing.T) {
 	assertNoEvents(t, detector, 50*time.Millisecond)
 }
 
-func TestEventDetector_ProcessFrameNilSession(t *testing.T) {
-	detector := newTestEventDetector(t)
+func TestAsyncDetector_ProcessFrameNilSession(t *testing.T) {
+	detector := newTestAsyncDetector(t)
 
 	detector.ProcessFrame(&rtapi.LobbySessionStateFrame{})
 	assertNoEvents(t, detector, 50*time.Millisecond)
 }
 
-func TestEventDetector_ProcessFrameNilFrame(t *testing.T) {
-	detector := newTestEventDetector(t)
+func TestAsyncDetector_ProcessFrameNilFrame(t *testing.T) {
+	detector := newTestAsyncDetector(t)
 
 	detector.ProcessFrame(nil)
 	assertNoEvents(t, detector, 50*time.Millisecond)
 }
 
-func TestEventDetector_ResetClearsState(t *testing.T) {
-	detector := newTestEventDetector(t)
+func TestAsyncDetector_ResetClearsState(t *testing.T) {
+	detector := newTestAsyncDetector(t)
 
 	detector.ProcessFrame(createPostMatchTestFrame(GameStatusRoundOver, 1, 0))
 	if events := mustReceiveEvents(t, detector, 100*time.Millisecond); len(events) != 1 {
@@ -96,8 +96,8 @@ func TestEventDetector_ResetClearsState(t *testing.T) {
 	}
 }
 
-func TestEventDetector_StopClosesEventsChan(t *testing.T) {
-	detector := NewEventDetector()
+func TestAsyncDetector_StopClosesEventsChan(t *testing.T) {
+	detector := New()
 	detector.Stop()
 
 	select {
@@ -110,10 +110,10 @@ func TestEventDetector_StopClosesEventsChan(t *testing.T) {
 	}
 }
 
-func TestEventDetector_SensorIntegrationReceivesFrames(t *testing.T) {
-	detector := newTestEventDetector(t)
+func TestAsyncDetector_SensorIntegrationReceivesFrames(t *testing.T) {
+	detector := newTestAsyncDetector(t)
 	sensor := &recordingSensor{}
-	detector.sensors = []EventSensor{sensor}
+	detector.sensors = []Sensor{sensor}
 
 	detector.ProcessFrame(createPostMatchTestFrame("playing", 1, 0))
 
@@ -131,8 +131,8 @@ func TestEventDetector_SensorIntegrationReceivesFrames(t *testing.T) {
 	}
 }
 
-func TestEventDetector_AddFrameToBufferWraps(t *testing.T) {
-	detector := &EventDetector{
+func TestAsyncDetector_AddFrameToBufferWraps(t *testing.T) {
+	detector := &AsyncDetector{
 		frameBuffer: make([]*rtapi.LobbySessionStateFrame, DefaultFrameBufferCapacity),
 	}
 
@@ -153,8 +153,8 @@ func TestEventDetector_AddFrameToBufferWraps(t *testing.T) {
 	}
 }
 
-func TestEventDetector_detectPostMatchEventIgnoresInvalidIndex(t *testing.T) {
-	ed := &EventDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
+func TestAsyncDetector_detectPostMatchEventIgnoresInvalidIndex(t *testing.T) {
+	ed := &AsyncDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
 	if events := ed.detectPostMatchEvent(-1, nil); events != nil {
 		t.Fatalf("expected nil events for negative index, got %v", events)
 	}
@@ -163,24 +163,24 @@ func TestEventDetector_detectPostMatchEventIgnoresInvalidIndex(t *testing.T) {
 	}
 }
 
-func TestEventDetector_detectPostMatchEventSkipsNilFrame(t *testing.T) {
-	ed := &EventDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
+func TestAsyncDetector_detectPostMatchEventSkipsNilFrame(t *testing.T) {
+	ed := &AsyncDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
 	ed.frameBuffer[0] = nil
 	if events := ed.detectPostMatchEvent(0, nil); events != nil {
 		t.Fatalf("expected nil events for nil frame, got %v", events)
 	}
 }
 
-func TestEventDetector_detectPostMatchEventSkipsNilSession(t *testing.T) {
-	ed := &EventDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
+func TestAsyncDetector_detectPostMatchEventSkipsNilSession(t *testing.T) {
+	ed := &AsyncDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
 	ed.frameBuffer[0] = &rtapi.LobbySessionStateFrame{}
 	if events := ed.detectPostMatchEvent(0, nil); events != nil {
 		t.Fatalf("expected nil events for nil session, got %v", events)
 	}
 }
 
-func TestEventDetector_detectPostMatchEventSkipsRepeatedStatus(t *testing.T) {
-	ed := &EventDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
+func TestAsyncDetector_detectPostMatchEventSkipsRepeatedStatus(t *testing.T) {
+	ed := &AsyncDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
 	prev := newStatusOnlyFrame("playing")
 	ed.previousGameStatusFrame = prev
 	ed.frameBuffer[0] = newStatusOnlyFrame("playing")
@@ -192,8 +192,8 @@ func TestEventDetector_detectPostMatchEventSkipsRepeatedStatus(t *testing.T) {
 	}
 }
 
-func TestEventDetector_detectPostMatchEventUpdatesPreviousOnTransition(t *testing.T) {
-	ed := &EventDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
+func TestAsyncDetector_detectPostMatchEventUpdatesPreviousOnTransition(t *testing.T) {
+	ed := &AsyncDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
 	prev := newStatusOnlyFrame("playing")
 	current := newStatusOnlyFrame(GameStatusRoundOver)
 	ed.previousGameStatusFrame = prev
@@ -206,8 +206,8 @@ func TestEventDetector_detectPostMatchEventUpdatesPreviousOnTransition(t *testin
 	}
 }
 
-func TestEventDetector_detectPostMatchEventEmitsRoundEnded(t *testing.T) {
-	ed := &EventDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
+func TestAsyncDetector_detectPostMatchEventEmitsRoundEnded(t *testing.T) {
+	ed := &AsyncDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
 	ed.previousGameStatusFrame = newStatusOnlyFrame("playing")
 	ed.frameBuffer[0] = newStatusOnlyFrame(GameStatusRoundOver)
 	events := ed.detectPostMatchEvent(0, nil)
@@ -219,8 +219,8 @@ func TestEventDetector_detectPostMatchEventEmitsRoundEnded(t *testing.T) {
 	}
 }
 
-func TestEventDetector_detectPostMatchEventEmitsMatchEnded(t *testing.T) {
-	ed := &EventDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
+func TestAsyncDetector_detectPostMatchEventEmitsMatchEnded(t *testing.T) {
+	ed := &AsyncDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
 	ed.previousGameStatusFrame = newStatusOnlyFrame(GameStatusRoundOver)
 	ed.frameBuffer[0] = newStatusOnlyFrame(GameStatusPostMatch)
 	events := ed.detectPostMatchEvent(0, nil)
@@ -232,8 +232,8 @@ func TestEventDetector_detectPostMatchEventEmitsMatchEnded(t *testing.T) {
 	}
 }
 
-func TestEventDetector_detectPostMatchEventInitialMatchEnded(t *testing.T) {
-	ed := &EventDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
+func TestAsyncDetector_detectPostMatchEventInitialMatchEnded(t *testing.T) {
+	ed := &AsyncDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
 	ed.frameBuffer[0] = newStatusOnlyFrame(GameStatusPostMatch)
 	events := ed.detectPostMatchEvent(0, nil)
 	if len(events) != 1 {
@@ -247,14 +247,14 @@ func TestEventDetector_detectPostMatchEventInitialMatchEnded(t *testing.T) {
 	}
 }
 
-func newTestEventDetector(tb testing.TB) *EventDetector {
+func newTestAsyncDetector(tb testing.TB) *AsyncDetector {
 	tb.Helper()
-	detector := NewEventDetector()
+	detector := New()
 	tb.Cleanup(detector.Stop)
 	return detector
 }
 
-func mustReceiveEvents(tb testing.TB, detector *EventDetector, timeout time.Duration) []*rtapi.LobbySessionEvent {
+func mustReceiveEvents(tb testing.TB, detector *AsyncDetector, timeout time.Duration) []*rtapi.LobbySessionEvent {
 	tb.Helper()
 	select {
 	case events, ok := <-detector.EventsChan():
@@ -268,7 +268,7 @@ func mustReceiveEvents(tb testing.TB, detector *EventDetector, timeout time.Dura
 	}
 }
 
-func assertNoEvents(tb testing.TB, detector *EventDetector, timeout time.Duration) {
+func assertNoEvents(tb testing.TB, detector *AsyncDetector, timeout time.Duration) {
 	tb.Helper()
 	select {
 	case events, ok := <-detector.EventsChan():

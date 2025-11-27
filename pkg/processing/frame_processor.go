@@ -1,34 +1,35 @@
-package nevrcap
+package processing
 
 import (
 	"time"
 
 	"github.com/echotools/nevr-common/v4/gen/go/apigame"
 	"github.com/echotools/nevr-common/v4/gen/go/rtapi"
+	"github.com/echotools/nevrcap/pkg/events"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// FrameProcessor handles high-performance processing of game frames
+// Processor handles high-performance processing of game frames
 // optimized for up to 600 Hz operation
-type FrameProcessor struct {
+type Processor struct {
 	frameIndex    uint32
-	eventDetector Detector
+	eventDetector events.Detector
 	unmarshaler   *protojson.UnmarshalOptions
 }
 
-// NewFrameProcessor creates a new optimized frame processor
-func NewFrameProcessor() *FrameProcessor {
-	return NewFrameProcessorWithDetector(NewEventDetector())
+// New creates a new optimized frame processor
+func New() *Processor {
+	return NewWithDetector(events.New())
 }
 
-// NewFrameProcessorWithDetector allows callers to supply a custom Detector implementation.
-func NewFrameProcessorWithDetector(det Detector) *FrameProcessor {
+// NewWithDetector allows callers to supply a custom Detector implementation.
+func NewWithDetector(det events.Detector) *Processor {
 	if det == nil {
-		det = NewEventDetector()
+		det = events.New()
 	}
 
-	return &FrameProcessor{
+	return &Processor{
 		frameIndex:    0,
 		eventDetector: det,
 		unmarshaler: &protojson.UnmarshalOptions{
@@ -40,7 +41,7 @@ func NewFrameProcessorWithDetector(det Detector) *FrameProcessor {
 // ProcessFrame takes raw session and user bones data and processes it into a rtapi.LobbySessionStateFrame
 // This is optimized for high-frequency invocation (up to 600 Hz)
 // Note: Events are now processed asynchronously and can be received via EventDetector.EventsChan()
-func (fp *FrameProcessor) ProcessFrame(sessionResponseData, userBonesData []byte, timestamp time.Time) (*rtapi.LobbySessionStateFrame, error) {
+func (fp *Processor) ProcessFrame(sessionResponseData, userBonesData []byte, timestamp time.Time) (*rtapi.LobbySessionStateFrame, error) {
 	// Reset the pre-allocated structs to avoid allocations
 	// Pre-allocated structs to avoid memory allocations
 	sessionResponse := &apigame.SessionResponse{}
@@ -74,17 +75,17 @@ func (fp *FrameProcessor) ProcessFrame(sessionResponseData, userBonesData []byte
 }
 
 // EventsChan returns the channel for receiving detected events
-func (fp *FrameProcessor) EventsChan() <-chan []*rtapi.LobbySessionEvent {
+func (fp *Processor) EventsChan() <-chan []*rtapi.LobbySessionEvent {
 	return fp.eventDetector.EventsChan()
 }
 
 // Reset clears the processor state
-func (fp *FrameProcessor) Reset() {
+func (fp *Processor) Reset() {
 	fp.frameIndex = 0
 	fp.eventDetector.Reset()
 }
 
 // Stop gracefully shuts down the frame processor
-func (fp *FrameProcessor) Stop() {
+func (fp *Processor) Stop() {
 	fp.eventDetector.Stop()
 }

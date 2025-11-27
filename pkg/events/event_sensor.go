@@ -1,7 +1,7 @@
-package nevrcap
+package events
 
 import "github.com/echotools/nevr-common/v4/gen/go/rtapi"
 
-type EventSensor interface {
+type Sensor interface {
 	AddFrame(*rtapi.LobbySessionStateFrame) *rtapi.LobbySessionEvent
 }

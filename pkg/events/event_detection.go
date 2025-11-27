@@ -1,4 +1,4 @@
-package nevrcap
+package events
 
 import (
 	"github.com/echotools/nevr-common/v4/gen/go/rtapi"
@@ -13,7 +13,7 @@ type detectionFunction func(i int, dst []*rtapi.LobbySessionEvent) []*rtapi.Lobb
 
 // detectPostMatchEvent checks if a post_match event should be triggered
 // Can use the frame ring buffer to analyze previous frames if needed
-func (ed *EventDetector) detectPostMatchEvent(i int, dst []*rtapi.LobbySessionEvent) []*rtapi.LobbySessionEvent {
+func (ed *AsyncDetector) detectPostMatchEvent(i int, dst []*rtapi.LobbySessionEvent) []*rtapi.LobbySessionEvent {
 	// Guard against invalid index
 	if i < 0 || i >= len(ed.frameBuffer) {
 		return dst

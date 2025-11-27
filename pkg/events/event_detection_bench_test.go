@@ -1,4 +1,4 @@
-package nevrcap
+package events
 
 import (
 	"testing"
@@ -6,8 +6,8 @@ import (
 	"github.com/echotools/nevr-common/v4/gen/go/rtapi"
 )
 
-func BenchmarkEventDetector_detectPostMatchEventRoundOver(b *testing.B) {
-	detector := &EventDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
+func BenchmarkAsyncDetector_detectPostMatchEventRoundOver(b *testing.B) {
+	detector := &AsyncDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
 	detector.frameBuffer[0] = newStatusOnlyFrame(GameStatusRoundOver)
 	prev := newStatusOnlyFrame("playing")
 	var buf []*rtapi.LobbySessionEvent
@@ -24,8 +24,8 @@ func BenchmarkEventDetector_detectPostMatchEventRoundOver(b *testing.B) {
 	}
 }
 
-func BenchmarkEventDetector_detectPostMatchEventMatchEnded(b *testing.B) {
-	detector := &EventDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
+func BenchmarkAsyncDetector_detectPostMatchEventMatchEnded(b *testing.B) {
+	detector := &AsyncDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, 1)}
 	detector.frameBuffer[0] = newStatusOnlyFrame(GameStatusPostMatch)
 	prev := newStatusOnlyFrame(GameStatusRoundOver)
 	var buf []*rtapi.LobbySessionEvent
@@ -42,8 +42,8 @@ func BenchmarkEventDetector_detectPostMatchEventMatchEnded(b *testing.B) {
 	}
 }
 
-func BenchmarkEventDetector_addFrameToBuffer(b *testing.B) {
-	detector := &EventDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, DefaultFrameBufferCapacity)}
+func BenchmarkAsyncDetector_addFrameToBuffer(b *testing.B) {
+	detector := &AsyncDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, DefaultFrameBufferCapacity)}
 	frames := make([]*rtapi.LobbySessionStateFrame, DefaultFrameBufferCapacity)
 	for i := range frames {
 		frames[i] = &rtapi.LobbySessionStateFrame{FrameIndex: uint32(i)}
@@ -57,9 +57,9 @@ func BenchmarkEventDetector_addFrameToBuffer(b *testing.B) {
 	}
 }
 
-func BenchmarkEventDetector_detectEventsWithSensors(b *testing.B) {
-	detector := &EventDetector{
-		sensors:     []EventSensor{benchEventSensor{}, benchEventSensor{}},
+func BenchmarkAsyncDetector_detectEventsWithSensors(b *testing.B) {
+	detector := &AsyncDetector{
+		sensors:     []Sensor{benchSensor{}, benchSensor{}},
 		frameBuffer: make([]*rtapi.LobbySessionStateFrame, DefaultFrameBufferCapacity),
 	}
 	roundOver := newStatusOnlyFrame(GameStatusRoundOver)
@@ -79,8 +79,8 @@ func BenchmarkEventDetector_detectEventsWithSensors(b *testing.B) {
 	}
 }
 
-func BenchmarkEventDetector_detectEventsNoTransition(b *testing.B) {
-	detector := &EventDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, DefaultFrameBufferCapacity)}
+func BenchmarkAsyncDetector_detectEventsNoTransition(b *testing.B) {
+	detector := &AsyncDetector{frameBuffer: make([]*rtapi.LobbySessionStateFrame, DefaultFrameBufferCapacity)}
 	playing := newStatusOnlyFrame("playing")
 	var buf []*rtapi.LobbySessionEvent
 
@@ -97,9 +97,9 @@ func BenchmarkEventDetector_detectEventsNoTransition(b *testing.B) {
 	}
 }
 
-type benchEventSensor struct{}
+type benchSensor struct{}
 
-func (benchEventSensor) AddFrame(frame *rtapi.LobbySessionStateFrame) *rtapi.LobbySessionEvent {
+func (benchSensor) AddFrame(frame *rtapi.LobbySessionStateFrame) *rtapi.LobbySessionEvent {
 	if frame == nil {
 		return nil
 	}

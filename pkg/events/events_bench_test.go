@@ -1,4 +1,4 @@
-package nevrcap
+package events
 
 import (
 	"testing"
@@ -9,8 +9,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func BenchmarkEventDetector_ProcessFrame(b *testing.B) {
-	detector := NewEventDetector()
+func BenchmarkAsyncDetector_ProcessFrame(b *testing.B) {
+	detector := New()
 	defer detector.Stop()
 
 	frame := createPostMatchTestFrame("playing", 1, 0)
@@ -28,7 +28,7 @@ func BenchmarkEventDetector_ProcessFrame(b *testing.B) {
 	}
 }
 
-func BenchmarkEventDetector_ProcessFrame_WithTransition(b *testing.B) {
+func BenchmarkAsyncDetector_ProcessFrame_WithTransition(b *testing.B) {
 	frames := []*rtapi.LobbySessionStateFrame{
 		createPostMatchTestFrame("playing", 2, 1),
 		createPostMatchTestFrame("post_match", 3, 1),
@@ -37,7 +37,7 @@ func BenchmarkEventDetector_ProcessFrame_WithTransition(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		detector := NewEventDetector()
+		detector := New()
 
 		// Drain events channel in background
 		go func() {
@@ -53,8 +53,8 @@ func BenchmarkEventDetector_ProcessFrame_WithTransition(b *testing.B) {
 	}
 }
 
-func BenchmarkEventDetector_ProcessFrame_FullBuffer(b *testing.B) {
-	detector := NewEventDetector()
+func BenchmarkAsyncDetector_ProcessFrame_FullBuffer(b *testing.B) {
+	detector := New()
 	defer detector.Stop()
 
 	// Drain events channel in background
@@ -78,7 +78,7 @@ func BenchmarkEventDetector_ProcessFrame_FullBuffer(b *testing.B) {
 	}
 }
 
-func BenchmarkEventDetector_ProcessFrame_Sequence(b *testing.B) {
+func BenchmarkAsyncDetector_ProcessFrame_Sequence(b *testing.B) {
 	// Pre-create all frames before timing
 	frames := make([]*rtapi.LobbySessionStateFrame, 100)
 	for j := 0; j < 100; j++ {
@@ -110,7 +110,7 @@ func BenchmarkEventDetector_ProcessFrame_Sequence(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		detector := NewEventDetector()
+		detector := New()
 
 		// Drain events channel in background
 		go func() {
