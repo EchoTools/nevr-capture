@@ -46,6 +46,8 @@ type EchoReplay struct {
 	unmarshaler *protojson.UnmarshalOptions
 	// Reusable buffer for timestamp parsing to avoid allocations
 	timestampBuf [len(EchoReplayTimeFormat)]byte
+	// Scratch buffer for marshaling
+	scratchBuf []byte
 }
 
 // EchoReplayFrame represents a frame in the .echoreplay format
@@ -184,19 +186,40 @@ func (e *EchoReplay) GetBufferSize() int {
 
 // WriteReplayFrame writes a frame using optimized buffer operations (same approach as writer_replay_file.go)
 func (e *EchoReplay) WriteReplayFrame(dst *bytes.Buffer, frame *rtapi.LobbySessionStateFrame) int {
-	// Get a JSON buffer from the pool
+	startLen := dst.Len()
 
-	sessionData, err := echoReplayerMarshaler.Marshal(frame.GetSession())
+	// 1. Timestamp
+	fastFormatTimestamp(e.timestampBuf[:], frame.Timestamp.AsTime())
+	dst.Write(e.timestampBuf[:23])
+
+	// 2. Separator
+	dst.WriteByte('\t')
+
+	// 3. Session
+	var err error
+	e.scratchBuf = e.scratchBuf[:0]
+	e.scratchBuf, err = echoReplayerMarshaler.MarshalAppend(e.scratchBuf, frame.GetSession())
 	if err != nil {
 		return 0
 	}
+	dst.Write(e.scratchBuf)
 
-	bonesData, err := echoReplayerMarshaler.Marshal(frame.GetPlayerBones())
+	// 4. Separator and Space
+	dst.WriteByte('\t')
+	dst.WriteByte(' ')
+
+	// 5. Player Bones
+	e.scratchBuf = e.scratchBuf[:0]
+	e.scratchBuf, err = echoReplayerMarshaler.MarshalAppend(e.scratchBuf, frame.GetPlayerBones())
 	if err != nil {
 		return 0
 	}
+	dst.Write(e.scratchBuf)
 
-	return e.writeReplayLine(dst, frame.Timestamp.AsTime(), sessionData, bonesData)
+	// 6. Newline
+	dst.WriteString("\r\n")
+
+	return dst.Len() - startLen
 }
 
 // Finalize writes the buffered data to the zip file and closes it
@@ -255,24 +278,6 @@ func (e *EchoReplay) HasNext() bool {
 	return e.scanner != nil && e.scanner.Err() == nil
 }
 
-func (e *EchoReplay) writeReplayLine(dst *bytes.Buffer, ts time.Time, session, bones []byte) int {
-	// Format is "2006/01/02 15:04:05.000\t<json session data>\t<json bones data>\r\n"
-	timestamp := ts.Format(EchoReplayTimeFormat)
-
-	dataSize := len(timestamp) + 1 + len(session) + 1 + 1 + len(bones) + 2 // timestamp + tab + session + tab + bones + \r\n
-
-	dst.Grow(dataSize)
-	dst.WriteString(timestamp)
-	dst.WriteByte('\t') // Tab separator
-	dst.Write(session)
-	dst.WriteByte('\t') // Tab separator
-	dst.WriteByte(' ')  // space
-	dst.Write(bones)
-	dst.WriteString("\r\n") // Carriage return + newline
-
-	return dataSize
-}
-
 // parseFrameLine parses a single line into a frame
 func (e *EchoReplay) parseFrameLine(line []byte) (*rtapi.LobbySessionStateFrame, error) {
 	parts := bytes.Split(line, []byte("\t"))
@@ -281,10 +286,9 @@ func (e *EchoReplay) parseFrameLine(line []byte) (*rtapi.LobbySessionStateFrame,
 	}
 
 	// Parse timestamp
-	timestampStr := string(parts[0])
-	timestamp, err := time.Parse(EchoReplayTimeFormat, timestampStr)
+	timestamp, err := fastParseTimestamp(parts[0])
 	if err != nil {
-		return nil, fmt.Errorf("invalid timestamp format: %s", timestampStr)
+		return nil, fmt.Errorf("invalid timestamp format: %s", string(parts[0]))
 	}
 
 	// Parse session data
@@ -439,12 +443,9 @@ func (e *EchoReplay) parseFrameLineTo(line []byte, frame *rtapi.LobbySessionStat
 	}
 	secondTab += firstTab + 1
 
-	// Parse timestamp - reuse buffer to avoid allocation
-	if firstTab > len(e.timestampBuf) {
-		return fmt.Errorf("timestamp too long")
-	}
-	copy(e.timestampBuf[:], line[:firstTab])
-	timestamp, err := time.ParseInLocation(EchoReplayTimeFormat, string(e.timestampBuf[:firstTab]), time.Local)
+	// Parse timestamp
+	tsBytes := line[:firstTab]
+	timestamp, err := fastParseTimestamp(tsBytes)
 	if err != nil {
 		return fmt.Errorf("invalid timestamp format")
 	}
@@ -485,4 +486,67 @@ func (e *EchoReplay) parseFrameLineTo(line []byte, frame *rtapi.LobbySessionStat
 	}
 
 	return nil
+}
+
+func fastParseTimestamp(buf []byte) (time.Time, error) {
+	if len(buf) != 23 {
+		return time.Time{}, &time.ParseError{Layout: EchoReplayTimeFormat, Value: string(buf), Message: "invalid length"}
+	}
+
+	// 2006/01/02 15:04:05.000
+	// 01234567890123456789012
+
+	year := int(buf[0]-'0')*1000 + int(buf[1]-'0')*100 + int(buf[2]-'0')*10 + int(buf[3]-'0')
+	month := time.Month(int(buf[5]-'0')*10 + int(buf[6]-'0'))
+	day := int(buf[8]-'0')*10 + int(buf[9]-'0')
+	hour := int(buf[11]-'0')*10 + int(buf[12]-'0')
+	min := int(buf[14]-'0')*10 + int(buf[15]-'0')
+	sec := int(buf[17]-'0')*10 + int(buf[18]-'0')
+	ms := int(buf[20]-'0')*100 + int(buf[21]-'0')*10 + int(buf[22]-'0')
+
+	return time.Date(year, month, day, hour, min, sec, ms*1000000, time.Local), nil
+}
+
+func fastFormatTimestamp(dst []byte, t time.Time) {
+	// 2006/01/02 15:04:05.000
+	year, month, day := t.Date()
+	hour, min, sec := t.Clock()
+	ms := t.Nanosecond() / 1000000
+
+	// Year
+	dst[0] = byte(year/1000) + '0'
+	dst[1] = byte((year/100)%10) + '0'
+	dst[2] = byte((year/10)%10) + '0'
+	dst[3] = byte(year%10) + '0'
+	dst[4] = '/'
+
+	// Month
+	dst[5] = byte(month/10) + '0'
+	dst[6] = byte(month%10) + '0'
+	dst[7] = '/'
+
+	// Day
+	dst[8] = byte(day/10) + '0'
+	dst[9] = byte(day%10) + '0'
+	dst[10] = ' '
+
+	// Hour
+	dst[11] = byte(hour/10) + '0'
+	dst[12] = byte(hour%10) + '0'
+	dst[13] = ':'
+
+	// Minute
+	dst[14] = byte(min/10) + '0'
+	dst[15] = byte(min%10) + '0'
+	dst[16] = ':'
+
+	// Second
+	dst[17] = byte(sec/10) + '0'
+	dst[18] = byte(sec%10) + '0'
+	dst[19] = '.'
+
+	// Millisecond
+	dst[20] = byte(ms/100) + '0'
+	dst[21] = byte((ms/10)%10) + '0'
+	dst[22] = byte(ms%10) + '0'
 }

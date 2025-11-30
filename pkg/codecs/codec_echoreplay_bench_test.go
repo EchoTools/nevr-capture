@@ -119,3 +119,48 @@ func BenchmarkNewEchoReplayReader(b *testing.B) {
 		reader.Close()
 	}
 }
+
+func BenchmarkTimeParse(b *testing.B) {
+	ts := "2023/11/27 15:04:05.123"
+	format := "2006/01/02 15:04:05.000"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := time.Parse(format, ts)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkFastParseTimestamp(b *testing.B) {
+	tsBytes := []byte("2023/11/27 15:04:05.123")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := fastParseTimestamp(tsBytes)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkTimeFormat(b *testing.B) {
+	t := time.Now()
+	format := "2006/01/02 15:04:05.000"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = t.Format(format)
+	}
+}
+
+func BenchmarkFastFormatTimestamp(b *testing.B) {
+	t := time.Now()
+	buf := make([]byte, 23)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		fastFormatTimestamp(buf, t)
+	}
+}
