@@ -253,12 +253,12 @@ func (ed *AsyncDetector) addFrameToBuffer(frame *rtapi.LobbySessionStateFrame) {
 	}
 }
 
-// getFrame returns the frame at the given offset
+// getFrame returns the frame at the given offset (0 = most recent, 1 = previous, etc.)
 func (ed *AsyncDetector) getFrame(offset int) *rtapi.LobbySessionStateFrame {
-	if offset >= len(ed.frameBuffer) {
+	if offset >= ed.frameCount {
 		return nil
 	}
-	idx := (ed.writeIndex + offset + len(ed.frameBuffer)) % len(ed.frameBuffer)
+	idx := (ed.writeIndex - 1 - offset + len(ed.frameBuffer)) % len(ed.frameBuffer)
 	return ed.frameBuffer[idx]
 }
 
