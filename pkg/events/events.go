@@ -253,7 +253,7 @@ func (ed *AsyncDetector) lastFrameIndex() int {
 // detectEvents analyzes frames in the ring buffer and returns detected events
 func (ed *AsyncDetector) detectEvents(dst []*rtapi.LobbySessionEvent) []*rtapi.LobbySessionEvent {
 	// Use the newest frame available in the buffer
-	if len(ed.frameBuffer) == 0 {
+	if ed.frameCount == 0 {
 		return dst
 	}
 
