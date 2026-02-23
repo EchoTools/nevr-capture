@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/gofrs/uuid/v5 v5.4.0
-	github.com/klauspost/compress v1.18.2
+	github.com/klauspost/compress v1.18.4
 	google.golang.org/protobuf v1.36.11
 )
 
