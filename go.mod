@@ -8,7 +8,7 @@ require (
 )
 
 require (
-	buf.build/gen/go/echotools/nevr-api/protocolbuffers/go v1.36.11-20260320084729-a3dfb29cd431.1
+	buf.build/gen/go/echotools/nevr-api/protocolbuffers/go v1.36.11-20260325130619-6dc63487c791.1
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/spf13/cobra v1.10.2
 )
